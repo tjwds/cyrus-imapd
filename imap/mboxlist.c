@@ -2283,6 +2283,8 @@ EXPORTED int mboxlist_renamemailbox(const mbentry_t *mbentry,
                                   isadmin, forceuser);
     if (r) goto done;
 
+    mailbox_modseq_dirty(oldmailbox);
+
     if (isusermbox) {
         r = mboxlist_create_partition(newname, partition, &newpartition);
         if (r) goto done;
@@ -2341,7 +2343,7 @@ EXPORTED int mboxlist_renamemailbox(const mbentry_t *mbentry,
             oldmbentry->uniqueid = xstrdupnull(mbentry->uniqueid);
             oldmbentry->createdmodseq = mbentry->createdmodseq;
             oldmbentry->foldermodseq = oldmailbox ?
-                mailbox_modseq_dirty(oldmailbox) : mbentry->foldermodseq + 1;
+                oldmailbox->i.highestmodseq : mbentry->foldermodseq + 1;
 
             r = mboxlist_update_entry(oldname, oldmbentry, &tid);
 
