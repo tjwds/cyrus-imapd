@@ -697,4 +697,6 @@ extern void mailbox_cleanup_uid(struct mailbox *mailbox, uint32_t uid, const cha
 
 extern struct dlist *mailbox_acl_to_dlist(const char *aclstr);
 
+extern int mailbox_changequotaroot(struct mailbox *mailbox, const char *root);
+
 #endif /* INCLUDED_MAILBOX_H */
