@@ -1082,7 +1082,7 @@ EXPORTED void index_fetchresponses(struct index_state *state,
     /* Keep an open reference on the per-mailbox db to avoid
      * doing too many slow database opens during the fetch */
     if ((fetchargs->fetchitems & FETCH_ANNOTATION))
-        annotate_getdb(state->mboxname, &annot_db);
+        annotate_getdb(state->mailbox->uniqueid, &annot_db);
 
     start = 1;
     end = state->exists;
@@ -5435,7 +5435,7 @@ MsgData **index_msgdata_load(struct index_state *state,
             case SORT_ANNOTATION: {
                 struct buf value = BUF_INITIALIZER;
 
-                annotatemore_msg_lookup(state->mboxname,
+                annotatemore_msg_lookup(state->mailbox,
                                         record.uid,
                                         sortcrit[j].args.annot.entry,
                                         sortcrit[j].args.annot.userid,
