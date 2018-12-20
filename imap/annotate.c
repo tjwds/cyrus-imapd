@@ -2657,8 +2657,7 @@ EXPORTED int annotatemore_msg_lookup(const struct mailbox *mailbox,
                                      uint32_t uid, const char *entry,
                                      const char *userid, struct buf *value)
 {
-    return _annotate_lookup(mailbox ? mailbox->name : "",
-                            mailbox ? mailbox->uniqueid : NULL,
+    return _annotate_lookup(mailbox->name, mailbox->uniqueid,
                             uid, entry, userid, value);
 }
 
@@ -2666,8 +2665,7 @@ EXPORTED int annotatemore_msg_lookupmask(const struct mailbox *mailbox,
                                          uint32_t uid, const char *entry,
                                          const char *userid, struct buf *value)
 {
-    return _annotate_lookupmask(mailbox ? mailbox->name : "",
-                                mailbox ? mailbox->uniqueid : NULL,
+    return _annotate_lookupmask(mailbox->name, mailbox->uniqueid,
                                 uid, entry, userid, value);
 }
 
@@ -3584,11 +3582,9 @@ static int rename_cb(const char *mboxname __attribute__((unused)),
 }
 
 EXPORTED int annotate_rename_mailbox(struct mailbox *oldmailbox,
-                                     struct mailbox *newmailbox)
+                                     struct mailbox *newmailbox __attribute__((unused)))
 {
     /* rename one mailbox */
-    char *olduserid = mboxname_to_userid(oldmailbox->name);
-    char *newuserid = mboxname_to_userid(newmailbox->name);
     annotate_db_t *d = NULL;
     int r = 0;
 
@@ -3604,11 +3600,6 @@ EXPORTED int annotate_rename_mailbox(struct mailbox *oldmailbox,
     if (r) goto done;
 
     annotate_begin(d);
-
-    /* copy here - delete will dispose of old records later */
-    r = _annotate_rewrite(oldmailbox, 0, olduserid,
-                          newmailbox, 0, newuserid,
-                         /*copy*/1);
 
     /* delete displayname records only */
     struct rename_rock rrock = { oldmailbox, .newmailbox = NULL, .copy = 0 };
@@ -3627,8 +3618,6 @@ EXPORTED int annotate_rename_mailbox(struct mailbox *oldmailbox,
 
  done:
     annotate_putdb(&d);
-    free(olduserid);
-    free(newuserid);
 
     return r;
 }
