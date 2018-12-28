@@ -786,16 +786,21 @@ static int _email_mailboxes_cb(const conv_guidrec_t *rec, void *rock)
     struct mailbox *mbox = NULL;
     msgrecord_t *mr = NULL;
     uint32_t system_flags, internal_flags;
+    mbentry_t *mbentry = NULL;
     int r;
 
     if (rec->part) return 0;
 
-    static int needrights = ACL_READ|ACL_LOOKUP;
-    if (!jmap_hasrights_byname(req, rec->mboxname, needrights))
-        return 0;
+    mboxlist_lookup_by_uniqueid(rec->mboxid, &mbentry, NULL);
 
-    r = jmap_openmbox(req, rec->mboxname, &mbox, 0);
-    if (r) return r;
+    static int needrights = ACL_READ|ACL_LOOKUP;
+    if (!mbentry || !jmap_hasrights(req, mbentry, needrights)) {
+        r = 0;
+        goto done;
+    }
+
+    r = jmap_openmbox(req, mbentry->name, &mbox, 0);
+    if (r) goto done;
 
     r = msgrecord_find(mbox, rec->uid, &mr);
     if (r) goto done;
@@ -814,6 +819,7 @@ static int _email_mailboxes_cb(const conv_guidrec_t *rec, void *rock)
 done:
     if (mr) msgrecord_unref(&mr);
     jmap_closembox(req, &mbox);
+    mboxlist_entry_free(&mbentry);
     return r;
 }
 
@@ -1305,23 +1311,29 @@ static int _email_find_cb(const conv_guidrec_t *rec, void *rock)
 {
     struct _email_find_rock *d = (struct _email_find_rock*) rock;
     jmap_req_t *req = d->req;
+    mbentry_t *mbentry = NULL;
     int r = 0;
 
     if (rec->part) return 0;
 
-    if (!d->mboxname || jmap_isopenmbox(req, rec->mboxname)) {
+    r = mboxlist_lookup_by_uniqueid(rec->mboxid, &mbentry, NULL);
+    if (r) goto done;
+
+    if (!d->mboxname || jmap_isopenmbox(req, mbentry->name)) {
         struct mailbox *mbox = NULL;
         msgrecord_t *mr = NULL;
         uint32_t flags;
 
         /* Make sure we are allowed to read this mailbox */
-        if (!jmap_hasrights_byname(req, rec->mboxname, ACL_READ))
-            return 0;
+        if (!jmap_hasrights(req, mbentry, ACL_READ)) {
+            r = 0;
+            goto done;
+        }
 
         /* Prefer to use messages in already opened mailboxes */
 
-        r = jmap_openmbox(req, rec->mboxname, &mbox, 0);
-        if (r) return r;
+        r = jmap_openmbox(req, mbentry->name, &mbox, 0);
+        if (r) goto done;
 
         r = msgrecord_find(mbox, rec->uid, &mr);
         if (!r) {
@@ -1333,7 +1345,7 @@ static int _email_find_cb(const conv_guidrec_t *rec, void *rock)
                     free(d->mboxname);
                     r = IMAP_OK_COMPLETED;
                 }
-                d->mboxname = xstrdup(rec->mboxname);
+                d->mboxname = xstrdup(mbox->name);
                 d->uid = rec->uid;
             }
             msgrecord_unref(&mr);
@@ -1342,6 +1354,8 @@ static int _email_find_cb(const conv_guidrec_t *rec, void *rock)
         jmap_closembox(req, &mbox);
     }
 
+ done:
+    mboxlist_entry_free(&mbentry);
     return r;
 }
 
@@ -1443,13 +1457,17 @@ static int _email_is_expunged_cb(const conv_guidrec_t *rec, void *rock)
     struct email_expunge_check *check = rock;
     msgrecord_t *mr = NULL;
     struct mailbox *mbox = NULL;
+    mbentry_t *mbentry = NULL;
     uint32_t flags;
     int r = 0;
 
     if (rec->part) return 0;
 
-    r = jmap_openmbox(check->req, rec->mboxname, &mbox, 0);
-    if (r) return r;
+    r = mboxlist_lookup_by_uniqueid(rec->mboxid, &mbentry, NULL);
+    if (r) goto done;
+
+    r = jmap_openmbox(check->req, mbentry->name, &mbox, 0);
+    if (r) goto done;
 
     r = msgrecord_find(mbox, rec->uid, &mr);
     if (!r) {
@@ -1468,8 +1486,10 @@ static int _email_is_expunged_cb(const conv_guidrec_t *rec, void *rock)
         msgrecord_unref(&mr);
     }
 
+ done:
     jmap_closembox(check->req, &mbox);
-    return 0;
+    mboxlist_entry_free(&mbentry);
+    return r;
 }
 
 static void _email_search_perf_attr(const search_attr_t *attr, strarray_t *perf_filters)
@@ -3775,10 +3795,18 @@ static int _thread_is_shared_cb(const conv_guidrec_t *rec, void *rock)
 {
     if (rec->part) return 0;
     jmap_req_t *req = (jmap_req_t *)rock;
+    mbentry_t *mbentry = NULL;
+    int r = 0;
+
+    mboxlist_lookup_by_uniqueid(rec->mboxid, &mbentry, NULL);
+
     static int needrights = ACL_READ|ACL_LOOKUP;
-    if (jmap_hasrights_byname(req, rec->mboxname, needrights))
-        return IMAP_OK_COMPLETED;
-    return 0;
+    if (mbentry && jmap_hasrights(req, mbentry, needrights))
+        r = IMAP_OK_COMPLETED;
+
+    mboxlist_entry_free(&mbentry);
+
+    return r;
 }
 
 static int _thread_get(jmap_req_t *req, json_t *ids,
@@ -4090,15 +4118,22 @@ static int _email_get_keywords_cb(const conv_guidrec_t *rec, void *vrock)
     struct email_get_keywords_rock *rock = vrock;
     jmap_req_t *req = rock->req;
     struct mailbox *mbox = NULL;
+    mbentry_t *mbentry = NULL;
     msgrecord_t *mr = NULL;
+    int r = 0;
 
     if (rec->part) return 0;
 
-    if (!jmap_hasrights_byname(req, rec->mboxname, ACL_READ|ACL_LOOKUP)) return 0;
+    mboxlist_lookup_by_uniqueid(rec->mboxid, &mbentry, NULL);
+
+    if (!mbentry || !jmap_hasrights(req, mbentry, ACL_READ|ACL_LOOKUP)) {
+        r = 0;
+        goto done;
+    }
 
     /* Fetch system flags */
-    int r = jmap_openmbox(req, rec->mboxname, &mbox, 0);
-    if (r) return r;
+    r = jmap_openmbox(req, mbentry->name, &mbox, 0);
+    if (r) goto done;
 
     r = msgrecord_find(mbox, rec->uid, &mr);
     if (r) goto done;
@@ -4108,6 +4143,7 @@ static int _email_get_keywords_cb(const conv_guidrec_t *rec, void *vrock)
 done:
     msgrecord_unref(&mr);
     jmap_closembox(req, &mbox);
+    mboxlist_entry_free(&mbentry);
     return r;
 }
 
@@ -5506,12 +5542,12 @@ static int _warmup_mboxcache_cb(const conv_guidrec_t *rec, void* vrock)
     int i;
     for (i = 0; i < ptrarray_size(&rock->mboxes); i++) {
         struct mailbox *mbox = ptrarray_nth(&rock->mboxes, i);
-        if (!strcmp(rec->mboxname, mbox->name)) {
+        if (!strcmp(rec->mboxid, mbox->uniqueid)) {
             return 0;
         }
     }
     struct mailbox *mbox = NULL;
-    int r = jmap_openmbox(rock->req, rec->mboxname, &mbox, /*rw*/0);
+    int r = jmap_openmbox_by_uniqueid(rock->req, rec->mboxid, &mbox, /*rw*/0);
     if (!r) {
         ptrarray_append(&rock->mboxes, mbox);
     }
@@ -8019,29 +8055,30 @@ static int _email_mboxrecs_read_cb(const conv_guidrec_t *rec, void *_rock)
 {
     struct email_mboxrecs_make_rock *rock = _rock;
     ptrarray_t *mboxrecs = rock->mboxrecs;
+    mbentry_t *mbentry = NULL;
 
-    if (!jmap_hasrights_byname(rock->req, rec->mboxname, ACL_READ|ACL_LOOKUP)) return 0;
+    mboxlist_lookup_by_uniqueid(rec->mboxid, &mbentry, NULL);
+
+    if (!mbentry || !jmap_hasrights(rock->req, mbentry, ACL_READ|ACL_LOOKUP))
+        return 0;
 
     /* Check if there's already a mboxrec for this mailbox. */
     int i;
     struct email_mboxrec *mboxrec = NULL;
     for (i = 0; i < ptrarray_size(mboxrecs); i++) {
         struct email_mboxrec *p = ptrarray_nth(mboxrecs, i);
-        if (!strcmp(rec->mboxname, p->mboxname)) {
+        if (!strcmp(mbentry->name, p->mboxname)) {
             mboxrec = p;
             break;
         }
     }
     if (mboxrec == NULL) {
-        mbentry_t *mbentry = NULL;
-        int r = mboxlist_lookup(rec->mboxname, &mbentry, NULL);
-        if (r) return r;
         mboxrec = xzmalloc(sizeof(struct email_mboxrec));
-        mboxrec->mboxname = xstrdup(rec->mboxname);
+        mboxrec->mboxname = xstrdup(mbentry->name);
         mboxrec->mbox_id = xstrdup(mbentry->uniqueid);
         ptrarray_append(mboxrecs, mboxrec);
-        mboxlist_entry_free(&mbentry);
     }
+    mboxlist_entry_free(&mbentry);
 
     struct email_uidrec *uidrec = xzmalloc(sizeof(struct email_uidrec));
     uidrec->mboxrec = mboxrec;
@@ -10150,7 +10187,7 @@ static int _email_copy_writeprops_cb(const conv_guidrec_t* rec, void* _rock)
     }
 
     /* Overwrite message record */
-    int r = jmap_openmbox(rock->req, rec->mboxname, &mbox, /*rw*/1);
+    int r = jmap_openmbox_by_uniqueid(rock->req, rec->mboxid, &mbox, /*rw*/1);
     if (!r) r = msgrecord_find(mbox, rec->uid, &mr);
     if (!r && rock->received_at) {
         time_t internal_date;
@@ -10271,7 +10308,7 @@ static int _email_exists_cb(const conv_guidrec_t *rec, void *rock)
     uint32_t internal_flags;
     int r = 0;
 
-    r = jmap_openmbox(req, rec->mboxname, &mbox, 0);
+    r = jmap_openmbox_by_uniqueid(req, rec->mboxid, &mbox, 0);
     if (r) return r;
 
     r = msgrecord_find(mbox, rec->uid, &mr);
@@ -10303,15 +10340,19 @@ static int _email_copy_pickrecord_cb(const conv_guidrec_t *rec, void *vrock)
 {
     struct emailcopy_pickrecord_rock *rock = vrock;
     jmap_req_t *req = rock->req;
+    mbentry_t *mbentry = NULL;
+
+    mboxlist_lookup_by_uniqueid(rec->mboxid, &mbentry, NULL);
 
     /* Make sure we are allowed to read this mailbox */
-    if (!jmap_hasrights_byname(req, rec->mboxname, ACL_READ)) return 0;
+    if (!mbentry || !jmap_hasrights(req, mbentry, ACL_READ)) return 0;
 
     struct mailbox *mbox = NULL;
     msgrecord_t *mr = NULL;
 
     /* Check if this record is expunged */
-    int r = jmap_openmbox(req, rec->mboxname, &mbox, 0);
+    int r = jmap_openmbox(req, mbentry->name, &mbox, 0);
+    mboxlist_entry_free(&mbentry);
     if (r) goto done;
 
     r = msgrecord_find(mbox, rec->uid, &mr);

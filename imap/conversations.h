@@ -77,7 +77,7 @@ struct conversations_state {
     struct txn *txn;
     char *annotmboxname;
     strarray_t *counted_flags;
-    strarray_t *folder_names;
+    strarray_t *folder_ids;
     hash_table folderstatus;
     int trashfolder;
     char *path;
@@ -119,7 +119,7 @@ struct conv_folder {
 #define CONV_GUIDREC_VERSION 0x1 // (must be <= 127)
 
 struct conv_guidrec {
-    const char      *mboxname;
+    const char      *mboxid;
     uint32_t        uid;
     const char      *part;
     conversation_id_t cid;
@@ -169,7 +169,7 @@ struct conversation {
 #define CONVERSATION_INIT { 0, 0, 0, 0, 0, 0, 0, 0, {0}, NULL, NULL, NULL, NULL, 0, CONV_ISDIRTY }
 
 struct emailcounts {
-    const char *mboxname;
+    const char *mboxid;
     int ispost;
     int pre_emailexists;
     int pre_emailunseen;
@@ -226,10 +226,10 @@ extern conversation_id_t conversations_guid_cid_lookup(struct conversations_stat
 
 /* F record items */
 extern int conversation_getstatus(struct conversations_state *state,
-                                  const char *mboxname,
+                                  const char *mboxid,
                                   conv_status_t *status);
 extern int conversation_setstatus(struct conversations_state *state,
-                                  const char *mboxname,
+                                  const char *mboxid,
                                   const conv_status_t *status);
 extern int conversation_storestatus(struct conversations_state *state,
                                     const char *key, size_t keylen,
