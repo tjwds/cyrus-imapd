@@ -4132,7 +4132,7 @@ static int index_fetchreply(struct index_state *state, uint32_t msgno,
         const char *annot = config_getstring(IMAPOPT_JMAP_PREVIEW_ANNOT);
         if (annot && !strncmp(annot, "/shared/", 8)) {
             struct buf previewbuf = BUF_INITIALIZER;
-            annotatemore_msg_lookup(mailbox->name, record.uid, annot+7,
+            annotatemore_msg_lookup(mailbox, record.uid, annot+7,
                                     /*userid*/"", &previewbuf);
             if (buf_len(&previewbuf) > 256)
                 buf_truncate(&previewbuf, 256); // XXX - utf8 chars
