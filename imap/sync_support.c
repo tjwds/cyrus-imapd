@@ -3743,6 +3743,7 @@ int sync_restore_mailbox(struct dlist *kin,
     struct dlist *ki;
     int has_append = 0;
     int is_new_mailbox = 0;
+    char *intname;
     int r;
 
     if (!dlist_getatom(kin, "MBOXNAME", &mboxname)) {
@@ -3782,7 +3783,8 @@ int sync_restore_mailbox(struct dlist *kin,
      */
 
     /* open/create mailbox */
-    r = mailbox_open_iwl(mboxname, &mailbox);
+    intname = mboxname_from_standard(mboxname);
+    r = mailbox_open_iwl(intname, &mailbox);
     if (!r) r = sync_mailbox_version_check(&mailbox);
     syslog(LOG_DEBUG, "%s: mailbox_open_iwl %s: %s",
            __func__, mboxname, error_message(r));
@@ -3799,7 +3801,7 @@ int sync_restore_mailbox(struct dlist *kin,
             uidvalidity = 0;
         }
 
-        r = mboxlist_createsync(mboxname, mbtype, partition,
+        r = mboxlist_createsync(intname, mbtype, partition,
                                 sstate->userid, sstate->authstate,
                                 options, uidvalidity, createdmodseq,
                                 highestmodseq, acl,
@@ -3809,6 +3811,7 @@ int sync_restore_mailbox(struct dlist *kin,
 
         is_new_mailbox = 1;
     }
+    free(intname);
     if (r) {
         syslog(LOG_ERR, "Failed to open mailbox %s to restore: %s",
                mboxname, error_message(r));
