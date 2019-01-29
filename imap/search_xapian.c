@@ -2040,8 +2040,6 @@ static int is_indexed_cb(const conv_guidrec_t *rec, void *rock)
 {
     xapian_update_receiver_t *tr = rock;
 
-    // FIXME need mailbox-by-id patch for rec->uniqueid
-
     if (rec->part) return 0;
 
     /* Is this GUID record in the mailbox we are currently indexing? */
@@ -2060,17 +2058,10 @@ static int is_indexed_cb(const conv_guidrec_t *rec, void *rock)
     }
 
     /* Read the index cache for this mailbox */
-    mbentry_t *mb = NULL;
     seq = seqset_init(0, SEQ_MERGE);
     int r = 0;
 
-    r = mboxlist_lookup_by_uniqueid(rec->mboxid, &mb, NULL);
-    if (r) {
-        syslog(LOG_ERR, "is_indexed_cb: mboxlist_lookup %s failed: %s",
-                rec->mboxid, error_message(r));
-        goto out;
-    }
-    r = read_indexed(tr->activedirs, tr->activetiers,mb->uniqueid,
+    r = read_indexed(tr->activedirs, tr->activetiers, rec->mboxid,
                      seq, /*do_cache*/1, tr->super.verbose);
     if (r) {
         syslog(LOG_ERR, "is_indexed_cb: read_indexed %s failed: %s",
@@ -2080,7 +2071,6 @@ static int is_indexed_cb(const conv_guidrec_t *rec, void *rock)
     hash_insert(rec->mboxid, seq, &tr->cached_seqs);
 
 out:
-    mboxlist_entry_free(&mb);
     if (r) {
         seqset_free(seq);
         return 0;
