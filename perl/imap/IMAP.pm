@@ -167,6 +167,7 @@ sub _qstringize {
 
 sub _stringize {
   my ($self, $str) = @_;
+  # wow, what a silly method name this is
   my $res;
   my $cc = _cc($str);
   my $nz = ($str ne '');
