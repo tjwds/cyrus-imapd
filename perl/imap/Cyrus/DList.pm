@@ -60,6 +60,7 @@ sub new_kvlist {
 sub new_list {
   my $class = shift;
   my $key = shift;
+  # I would have written the above as my ($class, $key) = @_;
 
   return bless {
     type => 'list',
